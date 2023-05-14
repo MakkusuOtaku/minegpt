@@ -1,0 +1,22 @@
+{
+  "name": "minegpt",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MakkusuOtaku/minegpt.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/MakkusuOtaku/minegpt/issues"
+  },
+  "homepage": "https://github.com/MakkusuOtaku/minegpt#readme",
+  "dependencies": {
+    "mineflayer": "^4.8.1"
+  }
+}
