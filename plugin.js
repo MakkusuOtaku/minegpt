@@ -6,7 +6,7 @@ const clients = {}; // not sure if "client" is the right word but whatever
 
 async function getChatGPTResponse(bot, messages) {
     if (!bot.gpt.online) return "SAY Offline '^'"; // Not perfect but it works.
-
+    
     let client = clients[bot.username];
 
     const completion = await client.createChatCompletion({
@@ -14,21 +14,26 @@ async function getChatGPTResponse(bot, messages) {
         messages: messages,
     });
 
-    return completion.data.choices[0].message.content; // There's a lot that could go wrong here.
+    return completion.data.choices[0].message.content;
 }
 
-async function getGreetingMessage(bot) {
-    let message = await getChatGPTResponse(bot, [
-        {"role": "system", "content": `You are a ${bot.gpt.personality} in Minecraft.`},
-        {"role": "user", "content": "Generate a greeting to say when you join the game. Don't use quotes."},
-    ]);
+async function getGreetingMessage(bot, client) {
+    if (!bot.gpt.online) return "I'm a happy little robot."; // I could use bot.gpt.personality here...
 
-    return message;
+    const completion = await client.createChatCompletion({
+        model: bot.gpt.model,
+        messages: [
+            {"role": "system", "content": `You are a ${bot.gpt.personality} in Minecraft.`},
+            {"role": "user", "content": "Generate a greeting to say when you join the game. Don't use quotes."},
+        ],
+    });
+
+    return completion.data.choices[0].message.content;
 }
 
 async function respondToMessage(bot, message) {
     let response = await getChatGPTResponse(bot, [
-        {"role": "system", "content": `You are a ${bot.gpt.personality} robot in Minecraft. Don't break character for any reason.`},
+        {"role": "system", "content": `You are a ${bot.gpt.personality} in Minecraft. Don't break character for any reason.`},
         ...bot.gpt.log,
         {"role": "user", "content": message},
     ]);
@@ -135,6 +140,50 @@ function precomputeTokens(bot, username, tokens) {
     return computedTokens;
 }
 
+const COMMAND_FUNCTIONS = {
+    "GOTO": async (bot, entity)=>{
+        await bot.pathfinder.goto(entity.position);
+    },
+
+    "LOOKAT": async (bot, entity)=>{
+        await bot.lookAt(entity.position.offset(0, entity.height, 0));
+    },
+
+    "PUNCH": async (bot, entity)=>{
+        await bot.attack(entity);
+    },
+
+    "ITEM": async (bot, itemName)=>{
+        let itemType = bot.registry.itemsByName(itemName);
+        await bot.equip(itemType);
+    },
+
+    "KILL": async (bot, entity)=>{
+        // TODO: implement actual cheese
+        for (let x = 0; x < 5; x++) {
+            bot.attack(entity);
+            await bot.waitForTicks(5);
+        }
+    },
+
+    "SNEAK": async (bot, state)=>{
+        if (state === "ON") bot.setControlState('sneak', true);
+        else if (state === "OFF") bot.setControlState('sneak', false);
+    },
+
+    "TOSS": async (bot, itemName, quantity)=>{
+        let itemType = bot.registry.itemsByName(itemName).id;
+        quantity = parseInt(quantity) || 1;
+
+        await bot.toss(itemType, null, quantity);
+    },
+
+    "WAIT": async (bot, duration)=>{
+        duration = parseInt(duration);
+        await bot.waitForTicks(duration);
+    },
+};
+
 async function performActions(bot, username, actions) {
     actions = actions.split('\n');
 
@@ -146,9 +195,24 @@ async function performActions(bot, username, actions) {
 
         //console.log(`${action} (${tokens[0]})`);
 
-        let entity = tokens[1];
+        if (tokens[0] === "SAY") {
+            let text = action.slice(4);
+            text = text.replace("$player", username)
+            text = text.replace("$myself", bot.username)
+            await bot.chat(text);
 
-        let commandFailed = false;
+            bot.emit("gpt-succeed", action);
+            continue;
+        }
+
+        let commandFunction = COMMAND_FUNCTIONS[tokens[0]];
+
+        if (!commandFunction) bot.emit("gpt-failed", action); // <- this is wrong but works fine temp
+        else bot.emit("gpt-succeed", action);
+
+        await commandFunction(bot, ...tokens.slice(1));
+
+        /*
 
         switch (tokens[0]) {
             case "GOTO":
@@ -199,7 +263,7 @@ async function performActions(bot, username, actions) {
                 bot.emit("gpt-failed", action);
         }
 
-        if (!commandFailed) bot.emit("gpt-succeed", action);
+        */
 
         await bot.waitForTicks(bot.gpt.actionDelay);
     }
@@ -224,11 +288,13 @@ function plugin(bot, {key, personality=DEFAULT_PERSONALITY, fillerDelay=2000}) {
         apiKey: key,
     });
 
-    clients[bot.username] = new OpenAIApi(configuration);
+    client = new OpenAIApi(configuration);
     
-    bot.gpt.greetingPromise = getGreetingMessage(bot);
+    bot.gpt.greetingPromise = getGreetingMessage(bot, client);
 
     bot.once('spawn', async ()=>{
+        clients[bot.username] = client;
+
         let greeting = await bot.gpt.greetingPromise;
         bot.chat(greeting);
 
