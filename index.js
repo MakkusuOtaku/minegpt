@@ -12,7 +12,7 @@ const COLOR = {
 const bot = mineflayer.createBot({
     username: "MineGPT",
     host: "localhost",
-    port: 51182,
+    port: 58370,
 });
 
 bot.on('kicked', console.log);

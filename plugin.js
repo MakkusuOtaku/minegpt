@@ -44,7 +44,7 @@ async function respondToMessage(bot, message) {
     return response;
 }
 
-const COMMAND_LIST = {
+const DEFAULT_COMMAND_LIST = {
     "GOTO": "Makes you walk to a specified entity. Pathfinding is done automatically.",
     "SAY": "Sends a message in the game. Use this to talk. Messages do not require quotes.",
     "LOOKAT": "Makes you look in the direction of a specified entity.",
@@ -79,6 +79,7 @@ $myself (Your own player)
 Examples of some commands:
 SAY Hello $player!
 LOOKAT #type=rabbit
+GOTO $player
 
 Message from player:
 `;
@@ -86,8 +87,8 @@ Message from player:
 async function getActionsFromCommand(bot, command) {
     let listOfCommands = "";
 
-    for (key of Object.keys(COMMAND_LIST)) {
-        listOfCommands += `${key} -> ${COMMAND_LIST[key]}\n`;
+    for (key of Object.keys(bot.gpt.COMMAND_LIST)) {
+        listOfCommands += `${key} -> ${bot.gpt.COMMAND_LIST[key]}\n`;
     }
 
     let response = await getChatGPTResponse(bot, [
@@ -140,7 +141,7 @@ function precomputeTokens(bot, username, tokens) {
     return computedTokens;
 }
 
-const COMMAND_FUNCTIONS = {
+const DEFAULT_COMMAND_FUNCTIONS = {
     "GOTO": async (bot, entity)=>{
         await bot.pathfinder.goto(entity.position);
     },
@@ -149,13 +150,20 @@ const COMMAND_FUNCTIONS = {
         await bot.lookAt(entity.position.offset(0, entity.height, 0));
     },
 
+    "SAY": async (bot, fullText)=>{
+        let text = fullText.slice(4);
+        text = text.replace("$player", username);
+        text = text.replace("$myself", bot.username);
+        await bot.chat(text);
+    },
+
     "PUNCH": async (bot, entity)=>{
         await bot.attack(entity);
     },
 
     "ITEM": async (bot, itemName)=>{
-        let itemType = bot.registry.itemsByName(itemName);
-        await bot.equip(itemType);
+        let item = bot.registry.itemsByName[itemName];
+        await bot.equip(item.id);
     },
 
     "KILL": async (bot, entity)=>{
@@ -195,22 +203,24 @@ async function performActions(bot, username, actions) {
 
         //console.log(`${action} (${tokens[0]})`);
 
+        /*
         if (tokens[0] === "SAY") {
             let text = action.slice(4);
-            text = text.replace("$player", username)
-            text = text.replace("$myself", bot.username)
+            text = text.replace("$player", username);
+            text = text.replace("$myself", bot.username);
             await bot.chat(text);
 
             bot.emit("gpt-succeed", action);
             continue;
         }
+        */
 
-        let commandFunction = COMMAND_FUNCTIONS[tokens[0]];
+        let commandFunction = bot.gpt.COMMAND_FUNCTIONS[tokens[0]];
 
         if (!commandFunction) bot.emit("gpt-failed", action); // <- this is wrong but works fine temp
         else bot.emit("gpt-succeed", action);
 
-        await commandFunction(bot, ...tokens.slice(1));
+        await commandFunction(bot, ...tokens.slice(1), action);
 
         /*
 
@@ -271,6 +281,9 @@ async function performActions(bot, username, actions) {
 
 function plugin(bot, {key, personality=DEFAULT_PERSONALITY, fillerDelay=2000}) {
     bot.gpt = {
+        COMMAND_FUNCTIONS: DEFAULT_COMMAND_FUNCTIONS,
+        COMMAND_LIST: DEFAULT_COMMAND_LIST,
+
         actionDelay: 1, // How long to wait between executing commands. (ticks)
         allowFollowUpPrompts: false,
         allowMetaPrompts: false,
@@ -312,6 +325,10 @@ function plugin(bot, {key, personality=DEFAULT_PERSONALITY, fillerDelay=2000}) {
         let response = await respondToMessage(bot, message);
         bot.chat(response);
     });
+
+    bot.gpt.get = async (messages)=>{
+        return getChatGPTResponse(bot, messages);
+    };
 
     bot.gpt.command = async (username, instruction)=>{
         let actions = await getActionsFromCommand(bot, instruction);
