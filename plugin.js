@@ -142,31 +142,31 @@ function precomputeTokens(bot, username, tokens) {
 }
 
 const DEFAULT_COMMAND_FUNCTIONS = {
-    "GOTO": async (bot, entity)=>{
+    "GOTO": async (bot, [entity])=>{
         await bot.pathfinder.goto(entity.position);
     },
 
-    "LOOKAT": async (bot, entity)=>{
+    "LOOKAT": async (bot, [entity])=>{
         await bot.lookAt(entity.position.offset(0, entity.height, 0));
     },
 
-    "SAY": async (bot, fullText)=>{
+    "SAY": async (bot, _, fullText)=>{
         let text = fullText.slice(4);
         text = text.replace("$player", username);
         text = text.replace("$myself", bot.username);
         await bot.chat(text);
     },
 
-    "PUNCH": async (bot, entity)=>{
+    "PUNCH": async (bot, [entity])=>{
         await bot.attack(entity);
     },
 
-    "ITEM": async (bot, itemName)=>{
+    "ITEM": async (bot, [itemName])=>{
         let item = bot.registry.itemsByName[itemName];
         await bot.equip(item.id);
     },
 
-    "KILL": async (bot, entity)=>{
+    "KILL": async (bot, [entity])=>{
         // TODO: implement actual cheese
         for (let x = 0; x < 5; x++) {
             bot.attack(entity);
@@ -174,19 +174,19 @@ const DEFAULT_COMMAND_FUNCTIONS = {
         }
     },
 
-    "SNEAK": async (bot, state)=>{
+    "SNEAK": async (bot, [state])=>{
         if (state === "ON") bot.setControlState('sneak', true);
         else if (state === "OFF") bot.setControlState('sneak', false);
     },
 
-    "TOSS": async (bot, itemName, quantity)=>{
+    "TOSS": async (bot, [itemName, quantity])=>{
         let itemType = bot.registry.itemsByName(itemName).id;
         quantity = parseInt(quantity) || 1;
 
         await bot.toss(itemType, null, quantity);
     },
 
-    "WAIT": async (bot, duration)=>{
+    "WAIT": async (bot, [duration])=>{
         duration = parseInt(duration);
         await bot.waitForTicks(duration);
     },
@@ -220,7 +220,9 @@ async function performActions(bot, username, actions) {
         if (!commandFunction) bot.emit("gpt-failed", action); // <- this is wrong but works fine temp
         else bot.emit("gpt-succeed", action);
 
-        await commandFunction(bot, ...tokens.slice(1), action);
+        console.log(`T0: "${tokens[0]}"`, bot.gpt.COMMAND_FUNCTIONS);
+
+        await commandFunction(bot, tokens.slice(1), action);
 
         /*
 
@@ -279,7 +281,7 @@ async function performActions(bot, username, actions) {
     }
 }
 
-function plugin(bot, {key, personality=DEFAULT_PERSONALITY, fillerDelay=2000}) {
+function plugin(bot, {key, personality=DEFAULT_PERSONALITY, fillerDelay=2000, online=true}) {
     bot.gpt = {
         COMMAND_FUNCTIONS: DEFAULT_COMMAND_FUNCTIONS,
         COMMAND_LIST: DEFAULT_COMMAND_LIST,
@@ -289,7 +291,7 @@ function plugin(bot, {key, personality=DEFAULT_PERSONALITY, fillerDelay=2000}) {
         allowMetaPrompts: false,
         fillerDelay: fillerDelay, // Miliseconds to wait before saying stuff like "umm..." while generating a response.
         model: "gpt-3.5-turbo",
-        online: true,
+        online: online,
         personality: personality+" robot", // The personality to adopt
         log: [],
     };
