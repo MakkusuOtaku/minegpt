@@ -17,6 +17,7 @@
   },
   "homepage": "https://github.com/MakkusuOtaku/minegpt#readme",
   "dependencies": {
-    "mineflayer": "^4.8.1"
+    "mineflayer": "^4.8.1",
+    "mineflayer-pathfinder": "^2.4.3"
   }
 }
